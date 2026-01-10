@@ -59,17 +59,14 @@ tldr semantic "validate JWT tokens and check expiration" .
 ### Setting Up Semantic Search
 
 ```bash
-# 1. Install embedding dependencies
-pip install sentence-transformers faiss-cpu
-
-# 2. Build the semantic index (one-time, ~2 min for typical project)
+# Build the semantic index (one-time, ~2 min for typical project)
 tldr warm /path/to/project
 
-# 3. Search by behavior
+# Search by behavior
 tldr semantic "database connection pooling" .
 ```
 
-The index is cached in `.tldr/cache/semantic.faiss`. Rebuilds automatically when code changes.
+Embedding dependencies (`sentence-transformers`, `faiss-cpu`) are included with `pip install llm-tldr`. The index is cached in `.tldr/cache/semantic.faiss` and rebuilds automatically when code changes.
 
 ---
 
