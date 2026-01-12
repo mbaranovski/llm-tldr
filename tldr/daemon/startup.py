@@ -307,6 +307,7 @@ def start_daemon(project_path: str | Path, foreground: bool = False):
                             [sys.executable, "-m", "tldr.daemon", str(project), "--foreground"],
                             startupinfo=startupinfo,
                             creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NO_WINDOW,
+                            stdout=subprocess.DEVNULL,
                         )
                         print(f"Daemon started with PID {proc.pid}")
                         print(f"Listening on {addr}:{port}")
