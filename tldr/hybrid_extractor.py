@@ -3149,7 +3149,7 @@ class HybridExtractor:
             ".c": "c", ".h": "c", ".cpp": "cpp", ".hpp": "cpp",
             ".cs": "csharp", ".swift": "swift",
             ".scala": "scala", ".sc": "scala",
-            ".lua": "lua",
+            ".lua": "lua", ".luau": "luau",
         }
         return ext_map.get(file_path.suffix.lower(), "unknown")
 

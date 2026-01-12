@@ -305,6 +305,8 @@ def scan_project(
         extensions = {'.py'}
     elif language == "typescript":
         extensions = {'.ts', '.tsx'}
+    elif language == "javascript":
+        extensions = {'.js', '.jsx', '.mjs', '.cjs'}
     elif language == "go":
         extensions = {'.go'}
     elif language == "rust":
@@ -313,6 +315,8 @@ def scan_project(
         extensions = {'.java'}
     elif language == "c":
         extensions = {'.c', '.h'}
+    elif language == "cpp":
+        extensions = {'.cpp', '.cc', '.cxx', '.hpp', '.hh', '.hxx'}
     elif language == "ruby":
         extensions = {'.rb'}
     elif language == "php":
@@ -325,6 +329,12 @@ def scan_project(
         extensions = {'.cs'}
     elif language == "scala":
         extensions = {'.scala', '.sc'}
+    elif language == "lua":
+        extensions = {'.lua'}
+    elif language == "luau":
+        extensions = {'.luau'}
+    elif language == "elixir":
+        extensions = {'.ex', '.exs'}
     else:
         raise ValueError(f"Unsupported language: {language}")
 

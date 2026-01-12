@@ -1551,6 +1551,7 @@ def get_code_structure(
         "csharp": {".cs"},
         "elixir": {".ex", ".exs"},
         "lua": {".lua"},
+        "luau": {".luau"},
     }
 
     extensions = ext_map.get(language, {".py"})

@@ -51,6 +51,83 @@ try:
 except ImportError:
     pass
 
+TREE_SITTER_LUA_AVAILABLE = False
+try:
+    import tree_sitter_lua
+    TREE_SITTER_LUA_AVAILABLE = True
+except ImportError:
+    pass
+
+TREE_SITTER_LUAU_AVAILABLE = False
+try:
+    import tree_sitter_luau
+    TREE_SITTER_LUAU_AVAILABLE = True
+except ImportError:
+    pass
+
+TREE_SITTER_JAVA_AVAILABLE = False
+try:
+    import tree_sitter_java
+    TREE_SITTER_JAVA_AVAILABLE = True
+except ImportError:
+    pass
+
+TREE_SITTER_C_AVAILABLE = False
+try:
+    import tree_sitter_c
+    TREE_SITTER_C_AVAILABLE = True
+except ImportError:
+    pass
+
+TREE_SITTER_CPP_AVAILABLE = False
+try:
+    import tree_sitter_cpp
+    TREE_SITTER_CPP_AVAILABLE = True
+except ImportError:
+    pass
+
+TREE_SITTER_RUBY_AVAILABLE = False
+try:
+    import tree_sitter_ruby
+    TREE_SITTER_RUBY_AVAILABLE = True
+except ImportError:
+    pass
+
+TREE_SITTER_PHP_AVAILABLE = False
+try:
+    import tree_sitter_php
+    TREE_SITTER_PHP_AVAILABLE = True
+except ImportError:
+    pass
+
+TREE_SITTER_CSHARP_AVAILABLE = False
+try:
+    import tree_sitter_c_sharp
+    TREE_SITTER_CSHARP_AVAILABLE = True
+except ImportError:
+    pass
+
+TREE_SITTER_KOTLIN_AVAILABLE = False
+try:
+    import tree_sitter_kotlin
+    TREE_SITTER_KOTLIN_AVAILABLE = True
+except ImportError:
+    pass
+
+TREE_SITTER_SCALA_AVAILABLE = False
+try:
+    import tree_sitter_scala
+    TREE_SITTER_SCALA_AVAILABLE = True
+except ImportError:
+    pass
+
+TREE_SITTER_ELIXIR_AVAILABLE = False
+try:
+    import tree_sitter_elixir
+    TREE_SITTER_ELIXIR_AVAILABLE = True
+except ImportError:
+    pass
+
 
 @dataclass
 class EditRange:
@@ -365,6 +442,61 @@ def _get_parser(language: str) -> Optional[Any]:
             parser.language = Language(tree_sitter_rust.language())
         else:
             return None
+    elif language == "lua":
+        if TREE_SITTER_LUA_AVAILABLE:
+            parser.language = Language(tree_sitter_lua.language())
+        else:
+            return None
+    elif language == "luau":
+        if TREE_SITTER_LUAU_AVAILABLE:
+            parser.language = Language(tree_sitter_luau.language())
+        else:
+            return None
+    elif language == "java":
+        if TREE_SITTER_JAVA_AVAILABLE:
+            parser.language = Language(tree_sitter_java.language())
+        else:
+            return None
+    elif language == "c":
+        if TREE_SITTER_C_AVAILABLE:
+            parser.language = Language(tree_sitter_c.language())
+        else:
+            return None
+    elif language == "cpp":
+        if TREE_SITTER_CPP_AVAILABLE:
+            parser.language = Language(tree_sitter_cpp.language())
+        else:
+            return None
+    elif language == "ruby":
+        if TREE_SITTER_RUBY_AVAILABLE:
+            parser.language = Language(tree_sitter_ruby.language())
+        else:
+            return None
+    elif language == "php":
+        if TREE_SITTER_PHP_AVAILABLE:
+            parser.language = Language(tree_sitter_php.language_php())
+        else:
+            return None
+    elif language == "csharp":
+        if TREE_SITTER_CSHARP_AVAILABLE:
+            parser.language = Language(tree_sitter_c_sharp.language())
+        else:
+            return None
+    elif language == "kotlin":
+        if TREE_SITTER_KOTLIN_AVAILABLE:
+            parser.language = Language(tree_sitter_kotlin.language())
+        else:
+            return None
+    elif language == "scala":
+        if TREE_SITTER_SCALA_AVAILABLE:
+            parser.language = Language(tree_sitter_scala.language())
+        else:
+            return None
+    elif language == "elixir":
+        if TREE_SITTER_ELIXIR_AVAILABLE:
+            parser.language = Language(tree_sitter_elixir.language())
+        else:
+            return None
     else:
         return None
 
@@ -377,7 +509,11 @@ class IncrementalParser:
     Manages tree cache and provides incremental parsing when possible.
     """
 
-    SUPPORTED_LANGUAGES = {"typescript", "tsx", "javascript", "python", "go", "rust"}
+    SUPPORTED_LANGUAGES = {
+        "typescript", "tsx", "javascript", "python", "go", "rust",
+        "lua", "luau", "java", "c", "cpp", "ruby", "php", "csharp",
+        "kotlin", "scala", "elixir"
+    }
 
     def __init__(self, cache_dir: Optional[Path] = None):
         """Initialize the incremental parser.
