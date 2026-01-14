@@ -499,6 +499,10 @@ def _get_cfg_summary(file_path: Path, func_name: str, lang: str) -> str:
             from tldr.cfg_extractor import extract_python_cfg
             cfg = extract_python_cfg(content, func_name)
             return f"complexity:{cfg.cyclomatic_complexity}, blocks:{len(cfg.blocks)}"
+        elif lang in ("typescript", "javascript"):
+            from tldr.cfg_extractor import extract_typescript_cfg
+            cfg = extract_typescript_cfg(content, func_name)
+            return f"complexity:{cfg.cyclomatic_complexity}, blocks:{len(cfg.blocks)}"
         # Add other languages as needed
     except Exception:
         pass
@@ -517,6 +521,16 @@ def _get_dfg_summary(file_path: Path, func_name: str, lang: str) -> str:
         if lang == "python":
             from tldr.dfg_extractor import extract_python_dfg
             dfg = extract_python_dfg(content, func_name)
+
+            # Count unique variables and def-use chains
+            var_names = set()
+            for ref in dfg.var_refs:
+                var_names.add(ref.name)
+
+            return f"vars:{len(var_names)}, def-use chains:{len(dfg.dataflow_edges)}"
+        elif lang in ("typescript", "javascript"):
+            from tldr.dfg_extractor import extract_typescript_dfg
+            dfg = extract_typescript_dfg(content, func_name)
 
             # Count unique variables and def-use chains
             var_names = set()
@@ -703,7 +717,22 @@ def _process_file_for_extraction(
     cfg_cache = {}
     dfg_cache = {}
 
-    if lang == "python":
+    # Language-to-extractor mapping for CFG/DFG analysis
+    def _get_extractors(language: str):
+        """Return (cfg_extractor, dfg_extractor) for the given language."""
+        if language == "python":
+            from tldr.cfg_extractor import extract_python_cfg
+            from tldr.dfg_extractor import extract_python_dfg
+            return extract_python_cfg, extract_python_dfg
+        elif language in ("typescript", "javascript"):
+            from tldr.cfg_extractor import extract_typescript_cfg
+            from tldr.dfg_extractor import extract_typescript_dfg
+            return extract_typescript_cfg, extract_typescript_dfg
+        return None, None
+
+    cfg_extractor, dfg_extractor = _get_extractors(lang)
+
+    if cfg_extractor and dfg_extractor:
         # Get all function names we need to process
         all_func_names = list(file_info.get("functions", []))
         for class_info in file_info.get("classes", []):
@@ -712,16 +741,14 @@ def _process_file_for_extraction(
 
         for func_name in all_func_names:
             try:
-                from tldr.cfg_extractor import extract_python_cfg
-                cfg = extract_python_cfg(content, func_name)
+                cfg = cfg_extractor(content, func_name)
                 cfg_cache[func_name] = f"complexity:{cfg.cyclomatic_complexity}, blocks:{len(cfg.blocks)}"
             except Exception:
                 cfg_cache[func_name] = ""
 
             try:
-                from tldr.dfg_extractor import extract_python_dfg
-                dfg = extract_python_dfg(content, func_name)
-                var_names = set(ref.name for ref in dfg.var_refs)
+                dfg = dfg_extractor(content, func_name)
+                var_names = {ref.name for ref in dfg.var_refs}
                 dfg_cache[func_name] = f"vars:{len(var_names)}, def-use chains:{len(dfg.dataflow_edges)}"
             except Exception:
                 dfg_cache[func_name] = ""
