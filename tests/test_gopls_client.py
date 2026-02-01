@@ -231,3 +231,45 @@ func Helper() string {
             assert "main" in caller_names
         finally:
             client.stop()
+
+
+class TestGoplsClientManager:
+    """Test module-level client management."""
+
+    def test_get_gopls_client_returns_none_without_gopls(self, monkeypatch):
+        """get_gopls_client returns None if gopls unavailable."""
+        from tldr import gopls_client
+        from tldr.gopls_client import get_gopls_client
+
+        monkeypatch.setattr(gopls_client, "GOPLS_AVAILABLE", False)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            client = get_gopls_client(tmpdir)
+            assert client is None
+
+    @pytest.mark.skipif(
+        not shutil.which("gopls"),
+        reason="gopls not installed"
+    )
+    def test_get_gopls_client_singleton(self):
+        """get_gopls_client returns same instance for same project."""
+        from tldr.gopls_client import get_gopls_client, shutdown_all_clients
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create go.mod
+            (Path(tmpdir) / "go.mod").write_text("module test\ngo 1.21\n")
+
+            try:
+                client1 = get_gopls_client(tmpdir)
+                client2 = get_gopls_client(tmpdir)
+
+                assert client1 is client2
+            finally:
+                shutdown_all_clients()
+
+    def test_shutdown_all_clients(self):
+        """shutdown_all_clients clears all clients."""
+        from tldr.gopls_client import shutdown_all_clients, _clients
+
+        shutdown_all_clients()
+        assert len(_clients) == 0

@@ -431,3 +431,39 @@ class GoplsClient:
             )
         except Exception:
             return None
+
+
+# === Module-level singleton for reuse ===
+
+_clients: dict[str, GoplsClient] = {}
+_clients_lock = threading.Lock()
+
+
+def get_gopls_client(project_root: str | Path) -> Optional[GoplsClient]:
+    """
+    Get or create a GoplsClient for a project.
+
+    Returns None if gopls is not available.
+    """
+    if not GOPLS_AVAILABLE:
+        return None
+
+    project_root = str(Path(project_root).resolve())
+
+    with _clients_lock:
+        if project_root not in _clients:
+            client = GoplsClient(project_root=project_root)
+            if client.start():
+                _clients[project_root] = client
+            else:
+                return None
+
+        return _clients[project_root]
+
+
+def shutdown_all_clients():
+    """Shutdown all gopls clients. Call on daemon shutdown."""
+    with _clients_lock:
+        for client in _clients.values():
+            client.stop()
+        _clients.clear()
