@@ -21,6 +21,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional, Tuple, Dict, Any
 
+from tldr.gopls_client import get_gopls_client, GOPLS_AVAILABLE
+
 logger = logging.getLogger("tldr.semantic")
 
 ALL_LANGUAGES = ["python", "typescript", "javascript", "go", "rust", "java", "c", "cpp", "ruby", "php", "kotlin", "swift", "csharp", "scala", "lua", "luau", "elixir"]
@@ -602,12 +604,71 @@ def _get_function_signature(file_path: Path, func_name: str, lang: str) -> Optio
 
                     return f"def {func_name}({', '.join(args)}){returns}"
 
+        elif lang == "go" and GOPLS_AVAILABLE:
+            signature = _get_go_signature_via_gopls(file_path, func_name, content)
+            if signature:
+                return signature
 
-        # For other languages, return simple signature
+        # Fallback for all other languages
         return f"function {func_name}(...)"
 
     except Exception:
         return None
+
+
+def _get_go_signature_via_gopls(file_path: Path, func_name: str, content: str) -> Optional[str]:
+    """Get Go function signature using gopls."""
+    project_root = _find_go_module_root(file_path)
+    if not project_root:
+        return None
+
+    client = get_gopls_client(project_root)
+    if not client:
+        return None
+
+    func_line, func_col = _find_go_func_position(content, func_name)
+    if func_line is None:
+        return None
+
+    symbol = client.get_symbol_at(str(file_path.resolve()), func_line, func_col)
+    if symbol and symbol.signature:
+        return symbol.signature
+
+    return None
+
+
+def _find_go_module_root(file_path: Path) -> Optional[Path]:
+    """Find the nearest directory containing go.mod."""
+    current = file_path.parent.resolve()
+    while current != current.parent:
+        if (current / "go.mod").exists():
+            return current
+        current = current.parent
+    return None
+
+
+def _find_go_func_position(content: str, func_name: str) -> Tuple[Optional[int], int]:
+    """Find the line number and column where a Go function name is defined.
+
+    Returns:
+        Tuple of (line_number, column) where line_number is 0-indexed,
+        or (None, 0) if not found.
+    """
+    import re
+
+    # Pattern to capture position of func name
+    func_pattern = rf'^\s*func\s+({re.escape(func_name)})\s*\('
+    method_pattern = rf'^\s*func\s+\([^)]+\)\s+({re.escape(func_name)})\s*\('
+
+    for i, line in enumerate(content.split('\n')):
+        match = re.search(func_pattern, line)
+        if match:
+            return i, match.start(1)
+        match = re.search(method_pattern, line)
+        if match:
+            return i, match.start(1)
+
+    return None, 0
 
 
 def _get_function_docstring(file_path: Path, func_name: str, lang: str) -> Optional[str]:
