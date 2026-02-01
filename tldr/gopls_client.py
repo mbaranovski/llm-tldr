@@ -349,3 +349,85 @@ class GoplsClient:
                 return (name, None, "function")
 
         return ("", None, "unknown")
+
+    def get_outgoing_calls(self, file_path: str, line: int, col: int) -> list[GoCallEdge]:
+        """Get functions called by the function at position."""
+        cache_key = ("outgoing", file_path, line, col)
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+
+        self._ensure_file_open(file_path)
+
+        items = self._send_request("textDocument/prepareCallHierarchy", {
+            "textDocument": {"uri": f"file://{file_path}"},
+            "position": {"line": line, "character": col},
+        })
+
+        if not items:
+            return []
+
+        edges = []
+        for item in items:
+            outgoing = self._send_request("callHierarchy/outgoingCalls", {
+                "item": item
+            })
+
+            if outgoing:
+                for call in outgoing:
+                    edge = self._parse_call_edge(item, call["to"], "outgoing")
+                    if edge:
+                        edges.append(edge)
+
+        self._cache[cache_key] = edges
+        return edges
+
+    def get_incoming_calls(self, file_path: str, line: int, col: int) -> list[GoCallEdge]:
+        """Get functions that call the function at position."""
+        cache_key = ("incoming", file_path, line, col)
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+
+        self._ensure_file_open(file_path)
+
+        items = self._send_request("textDocument/prepareCallHierarchy", {
+            "textDocument": {"uri": f"file://{file_path}"},
+            "position": {"line": line, "character": col},
+        })
+
+        if not items:
+            return []
+
+        edges = []
+        for item in items:
+            incoming = self._send_request("callHierarchy/incomingCalls", {
+                "item": item
+            })
+
+            if incoming:
+                for call in incoming:
+                    edge = self._parse_call_edge(call["from"], item, "incoming")
+                    if edge:
+                        edges.append(edge)
+
+        self._cache[cache_key] = edges
+        return edges
+
+    def _parse_call_edge(self, from_item: dict, to_item: dict, direction: str) -> Optional[GoCallEdge]:
+        """Parse call hierarchy items into GoCallEdge."""
+        try:
+            from_uri = from_item.get("uri", "")
+            to_uri = to_item.get("uri", "")
+
+            from_file = from_uri[7:] if from_uri.startswith("file://") else from_uri
+            to_file = to_uri[7:] if to_uri.startswith("file://") else to_uri
+
+            return GoCallEdge(
+                from_file=from_file,
+                from_func=from_item.get("name", ""),
+                from_line=from_item.get("range", {}).get("start", {}).get("line", 0),
+                to_file=to_file,
+                to_func=to_item.get("name", ""),
+                to_line=to_item.get("range", {}).get("start", {}).get("line", 0),
+            )
+        except Exception:
+            return None

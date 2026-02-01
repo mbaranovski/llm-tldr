@@ -134,3 +134,100 @@ func main() {
             assert "ProcessData handles" in symbol.doc
         finally:
             client.stop()
+
+
+class TestGoplsCallHierarchy:
+    """Test gopls call hierarchy.
+
+    Note: gopls call hierarchy works reliably within a single file.
+    Cross-file call hierarchy may require more workspace initialization
+    time or additional LSP configuration in some environments.
+    """
+
+    @pytest.fixture
+    def go_project_with_calls(self):
+        """Create a Go project with function calls.
+
+        Uses a single file to ensure reliable call hierarchy results.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            go_mod = Path(tmpdir) / "go.mod"
+            go_mod.write_text("module testproject\n\ngo 1.21\n")
+
+            # Single file with main() calling Helper()
+            # Line numbers (0-indexed):
+            # 0: package main
+            # 1: (empty)
+            # 2: func main() {
+            # 3:     result := Helper()
+            # 4:     println(result)
+            # 5: }
+            # 6: (empty)
+            # 7: // Helper returns a greeting.
+            # 8: func Helper() string {
+            # 9:     return "hello"
+            # 10: }
+            main_go = Path(tmpdir) / "main.go"
+            main_go.write_text('''package main
+
+func main() {
+    result := Helper()
+    println(result)
+}
+
+// Helper returns a greeting.
+func Helper() string {
+    return "hello"
+}
+''')
+            yield tmpdir
+
+    @pytest.mark.skipif(
+        not shutil.which("gopls"),
+        reason="gopls not installed"
+    )
+    def test_get_outgoing_calls(self, go_project_with_calls):
+        """Can get outgoing calls from a function."""
+        import time
+        from tldr.gopls_client import GoplsClient
+
+        client = GoplsClient(project_root=go_project_with_calls)
+        assert client.start()
+
+        try:
+            main_go = str(Path(go_project_with_calls) / "main.go")
+            # Give gopls time to index
+            time.sleep(2)
+            # Line 2 (0-indexed) is where main() is defined
+            calls = client.get_outgoing_calls(main_go, line=2, col=5)
+
+            # main() calls Helper()
+            call_names = [c.to_func for c in calls]
+            assert "Helper" in call_names
+        finally:
+            client.stop()
+
+    @pytest.mark.skipif(
+        not shutil.which("gopls"),
+        reason="gopls not installed"
+    )
+    def test_get_incoming_calls(self, go_project_with_calls):
+        """Can get incoming calls to a function."""
+        import time
+        from tldr.gopls_client import GoplsClient
+
+        client = GoplsClient(project_root=go_project_with_calls)
+        assert client.start()
+
+        try:
+            main_go = str(Path(go_project_with_calls) / "main.go")
+            # Give gopls time to index
+            time.sleep(2)
+            # Line 8 (0-indexed) is where Helper() is defined
+            calls = client.get_incoming_calls(main_go, line=8, col=5)
+
+            # Helper() is called by main()
+            caller_names = [c.from_func for c in calls]
+            assert "main" in caller_names
+        finally:
+            client.stop()
