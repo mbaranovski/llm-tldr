@@ -686,10 +686,36 @@ def _get_function_docstring(file_path: Path, func_name: str, lang: str) -> Optio
                 if isinstance(node, ast.FunctionDef) and node.name == func_name:
                     return ast.get_docstring(node)
 
+        elif lang == "go" and GOPLS_AVAILABLE:
+            docstring = _get_go_docstring_via_gopls(file_path, func_name, content)
+            if docstring:
+                return docstring
+
         return None
 
     except Exception:
         return None
+
+
+def _get_go_docstring_via_gopls(file_path: Path, func_name: str, content: str) -> Optional[str]:
+    """Get Go function documentation using gopls."""
+    project_root = _find_go_module_root(file_path)
+    if not project_root:
+        return None
+
+    client = get_gopls_client(project_root)
+    if not client:
+        return None
+
+    func_line, func_col = _find_go_func_position(content, func_name)
+    if func_line is None:
+        return None
+
+    symbol = client.get_symbol_at(str(file_path.resolve()), func_line, func_col)
+    if symbol and symbol.doc:
+        return symbol.doc
+
+    return None
 
 
 def _process_file_for_extraction(

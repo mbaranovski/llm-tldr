@@ -56,3 +56,40 @@ func ProcessData(ctx context.Context, data []byte) (int, error) {
         # Should return basic signature
         assert sig is not None
         assert "ProcessData" in sig
+
+
+class TestGoDocstringExtraction:
+    """Test Go docstring extraction via gopls."""
+
+    @pytest.fixture
+    def go_project(self):
+        """Create a Go project with documented functions."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            (Path(tmpdir) / "go.mod").write_text("module testproject\ngo 1.21\n")
+
+            (Path(tmpdir) / "main.go").write_text('''package main
+
+// ProcessData processes incoming data and returns the count.
+// It handles nil data gracefully.
+func ProcessData(data []byte) int {
+    if data == nil {
+        return 0
+    }
+    return len(data)
+}
+''')
+            yield tmpdir
+
+    @pytest.mark.skipif(
+        not shutil.which("gopls"),
+        reason="gopls not installed"
+    )
+    def test_go_docstring_with_gopls(self, go_project):
+        """Go docstring extracted when gopls available."""
+        from tldr.semantic import _get_function_docstring
+
+        main_go = Path(go_project) / "main.go"
+        doc = _get_function_docstring(main_go, "ProcessData", "go")
+
+        assert doc is not None
+        assert "processes incoming data" in doc.lower()
