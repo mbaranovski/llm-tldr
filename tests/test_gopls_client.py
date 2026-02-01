@@ -82,3 +82,55 @@ func main() {
         with tempfile.TemporaryDirectory() as tmpdir:
             client = GoplsClient(project_root=tmpdir)
             assert client.start() is False
+
+
+class TestGoplsHover:
+    """Test gopls hover (signature extraction)."""
+
+    @pytest.fixture
+    def go_project_with_func(self):
+        """Create a Go project with a typed function."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            go_mod = Path(tmpdir) / "go.mod"
+            go_mod.write_text("module testproject\n\ngo 1.21\n")
+
+            main_go = Path(tmpdir) / "main.go"
+            main_go.write_text('''package main
+
+import "context"
+
+// ProcessData handles data processing with context.
+func ProcessData(ctx context.Context, data []byte) (int, error) {
+    return len(data), nil
+}
+
+func main() {
+    ProcessData(context.Background(), nil)
+}
+''')
+            yield tmpdir
+
+    @pytest.mark.skipif(
+        not shutil.which("gopls"),
+        reason="gopls not installed"
+    )
+    def test_get_symbol_at(self, go_project_with_func):
+        """Can get symbol info with typed signature."""
+        from tldr.gopls_client import GoplsClient
+
+        client = GoplsClient(project_root=go_project_with_func)
+        assert client.start()
+
+        try:
+            main_go = str(Path(go_project_with_func) / "main.go")
+            # Line 5 (0-indexed) is where ProcessData is defined
+            symbol = client.get_symbol_at(main_go, line=5, col=5)
+
+            assert symbol is not None
+            assert symbol.name == "ProcessData"
+            assert "context.Context" in symbol.signature
+            assert "[]byte" in symbol.signature
+            assert "(int, error)" in symbol.signature
+            assert "ProcessData handles" in symbol.doc
+        finally:
+            client.stop()

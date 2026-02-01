@@ -128,9 +128,10 @@ class GoplsClient:
 
         with self._lock:
             self._request_id += 1
+            request_id = self._request_id
             request = {
                 "jsonrpc": "2.0",
-                "id": self._request_id,
+                "id": request_id,
                 "method": method,
                 "params": params,
             }
@@ -141,13 +142,25 @@ class GoplsClient:
                 self._process.stdin.write(message.encode())
                 self._process.stdin.flush()
 
-                response = self._read_response()
+                # Keep reading until we get the response for our request ID
+                # (skip any notifications from gopls)
+                for _ in range(50):  # Max iterations to avoid infinite loop
+                    response = self._read_response()
+                    if not response:
+                        return None
 
-                if "error" in response:
-                    logger.warning(f"gopls error: {response['error']}")
-                    return None
+                    # Check if this is our response (has matching id)
+                    if response.get("id") == request_id:
+                        if "error" in response:
+                            logger.warning(f"gopls error: {response['error']}")
+                            return None
+                        return response.get("result")
 
-                return response.get("result")
+                    # Otherwise it's a notification, skip it
+                    logger.debug(f"Skipping notification: {response.get('method', 'unknown')}")
+
+                logger.warning("Max iterations reached waiting for response")
+                return None
 
             except Exception as e:
                 logger.error(f"gopls request failed: {e}")
@@ -189,3 +202,150 @@ class GoplsClient:
             return json.loads(content)
 
         return {}
+
+    def get_symbol_at(self, file_path: str, line: int, col: int) -> Optional[GoSymbol]:
+        """
+        Get symbol information at a position using textDocument/hover.
+
+        Args:
+            file_path: Absolute path to Go file
+            line: 0-indexed line number
+            col: 0-indexed column number
+
+        Returns:
+            GoSymbol with signature and documentation, or None
+        """
+        cache_key = ("hover", file_path, line, col)
+        if cache_key in self._cache:
+            return self._cache[cache_key]
+
+        self._ensure_file_open(file_path)
+
+        result = self._send_request("textDocument/hover", {
+            "textDocument": {"uri": f"file://{file_path}"},
+            "position": {"line": line, "character": col},
+        })
+
+        if not result or "contents" not in result:
+            return None
+
+        symbol = self._parse_hover_result(result, file_path, line)
+        self._cache[cache_key] = symbol
+        return symbol
+
+    def _ensure_file_open(self, file_path: str):
+        """Notify gopls that a file is open."""
+        cache_key = ("open", file_path)
+        if cache_key in self._cache:
+            return
+
+        try:
+            content = Path(file_path).read_text()
+            self._send_notification("textDocument/didOpen", {
+                "textDocument": {
+                    "uri": f"file://{file_path}",
+                    "languageId": "go",
+                    "version": 1,
+                    "text": content,
+                }
+            })
+            self._cache[cache_key] = True
+        except Exception as e:
+            logger.warning(f"Failed to open {file_path}: {e}")
+
+    def _parse_hover_result(self, result: dict, file_path: str, line: int) -> Optional[GoSymbol]:
+        """Parse hover result into GoSymbol."""
+        contents = result.get("contents", {})
+
+        if isinstance(contents, dict):
+            value = contents.get("value", "")
+            kind = contents.get("kind", "plaintext")
+        elif isinstance(contents, str):
+            value = contents
+            kind = "plaintext"
+        else:
+            return None
+
+        lines = value.strip().split("\n")
+        signature = ""
+        doc = ""
+
+        if kind == "markdown":
+            # Parse markdown format with code blocks
+            in_code_block = False
+            for l in lines:
+                if l.startswith("```"):
+                    in_code_block = not in_code_block
+                    continue
+                if in_code_block:
+                    signature = l.strip()
+                else:
+                    # Skip markdown horizontal rules
+                    if l.strip() == "---":
+                        continue
+                    if doc:
+                        doc += "\n"
+                    doc += l
+        else:
+            # Parse plaintext format: first line is signature, rest is doc
+            if lines:
+                signature = lines[0].strip()
+                if len(lines) > 1:
+                    doc = "\n".join(lines[1:])
+
+        if not signature:
+            return None
+
+        name, receiver, sym_kind = self._parse_go_signature(signature)
+
+        return GoSymbol(
+            name=name,
+            qualified_name=f"({receiver}).{name}" if receiver else name,
+            signature=signature,
+            doc=doc.strip(),
+            file=file_path,
+            line=line,
+            kind=sym_kind,
+            receiver=receiver,
+        )
+
+    def _parse_go_signature(self, sig: str) -> tuple[str, Optional[str], str]:
+        """Parse Go signature to extract name, receiver, kind."""
+        sig = sig.strip()
+
+        if sig.startswith("type "):
+            parts = sig[5:].split()
+            name = parts[0] if parts else ""
+            kind = "interface" if "interface" in sig else "type"
+            return (name, None, kind)
+
+        if sig.startswith("func "):
+            rest = sig[5:].strip()
+
+            if rest.startswith("("):
+                depth = 0
+                end = 0
+                for i, c in enumerate(rest):
+                    if c == "(":
+                        depth += 1
+                    elif c == ")":
+                        depth -= 1
+                        if depth == 0:
+                            end = i + 1
+                            break
+
+                receiver_part = rest[1:end-1].strip()
+                receiver_parts = receiver_part.split()
+                receiver = receiver_parts[-1] if receiver_parts else None
+
+                rest = rest[end:].strip()
+                name_end = rest.find("(")
+                name = rest[:name_end].strip() if name_end > 0 else rest
+
+                return (name, receiver, "method")
+            else:
+                name_end = rest.find("(")
+                name = rest[:name_end].strip() if name_end > 0 else rest
+                return (name, None, "function")
+
+        return ("", None, "unknown")
