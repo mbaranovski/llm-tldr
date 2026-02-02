@@ -202,7 +202,7 @@ Tree-sitter parsers under the hood mean **one interface, 16 languages:**
 | Python | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Full |
 | TypeScript | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Full |
 | JavaScript | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Full |
-| Go | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ Basic |
+| Go | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ Full† |
 | Rust | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ Basic |
 | Java | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ Basic |
 | C | ✅ | ✅ | ✅ | ✅ | ✅ | ⚠️ Basic |
@@ -219,6 +219,8 @@ Tree-sitter parsers under the hood mean **one interface, 16 languages:**
 **\*Semantic embeddings:**
 - **Full**: Embeddings include all 5 layers (signature, call graph, CFG complexity, DFG variables, dependencies)
 - **Basic**: Embeddings include signature, call graph, and dependencies, but not CFG/DFG summaries
+
+**†Go Full semantic support** requires `gopls` installed (`go install golang.org/x/tools/gopls@latest`). Without gopls, Go falls back to Basic semantic support.
 
 > **Note:** CLI commands (`tldr cfg`, `tldr dfg`, `tldr slice`) work for all languages. The "Basic" semantic limitation only affects the richness of embeddings used by `tldr semantic search`.
 

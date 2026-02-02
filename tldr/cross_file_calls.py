@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Iterator, Optional
 
 from tldr.workspace import WorkspaceConfig, load_workspace_config, filter_paths
+from tldr.gopls_client import get_gopls_client, GOPLS_AVAILABLE
 
 # Tree-sitter support for TypeScript
 try:
@@ -3504,37 +3505,124 @@ def _build_go_call_graph(
     workspace_config: Optional[WorkspaceConfig] = None
 ):
     """Build call graph for Go files."""
+
+    # Try gopls first (type-aware, accurate)
+    if GOPLS_AVAILABLE and (root / "go.mod").exists():
+        success = _build_go_call_graph_gopls(root, graph, workspace_config)
+        if success:
+            return
+
+    # Fallback: tree-sitter based (existing code, limited)
+    _build_go_call_graph_treesitter(root, graph, func_index, workspace_config)
+
+
+def _build_go_call_graph_gopls(
+    root: Path,
+    graph: ProjectCallGraph,
+    workspace_config: Optional[WorkspaceConfig] = None
+) -> bool:
+    """Build Go call graph using gopls call hierarchy."""
+    # Resolve root to handle symlinks (e.g., /tmp -> /private/tmp on macOS)
+    resolved_root = root.resolve()
+
+    client = get_gopls_client(resolved_root)
+    if not client:
+        return False
+
+    go_files = scan_project(root, "go", workspace_config)
+    if not go_files:
+        return False
+
+    for go_file in go_files:
+        go_path = Path(go_file).resolve()
+        rel_path = str(go_path.relative_to(resolved_root))
+
+        try:
+            content = go_path.read_text()
+        except Exception:
+            continue
+
+        func_locations = _find_all_go_funcs(content)
+
+        for func_name, line, col in func_locations:
+            try:
+                outgoing = client.get_outgoing_calls(str(go_path), line, col)
+
+                for edge in outgoing:
+                    try:
+                        to_rel = str(Path(edge.to_file).relative_to(resolved_root))
+                    except ValueError:
+                        continue
+
+                    graph.add_edge(rel_path, func_name, to_rel, edge.to_func)
+
+            except Exception:
+                pass
+
+    return True
+
+
+def _find_all_go_funcs(content: str) -> list[tuple[str, int, int]]:
+    """Find all function/method definitions in Go source.
+
+    Returns list of (func_name, line_number, column) tuples.
+    The column points to the start of the function name.
+    """
+    import re
+
+    results = []
+    lines = content.split('\n')
+
+    func_pattern = re.compile(r'^\s*func\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(')
+    method_pattern = re.compile(r'^\s*func\s+\([^)]+\)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(')
+
+    for i, line in enumerate(lines):
+        match = func_pattern.search(line)
+        if match:
+            # Column is the start of the function name (group 1)
+            col = match.start(1)
+            results.append((match.group(1), i, col))
+            continue
+
+        match = method_pattern.search(line)
+        if match:
+            col = match.start(1)
+            results.append((match.group(1), i, col))
+
+    return results
+
+
+def _build_go_call_graph_treesitter(
+    root: Path,
+    graph: ProjectCallGraph,
+    func_index: dict,
+    workspace_config: Optional[WorkspaceConfig] = None
+):
+    """Fallback: Build Go call graph using tree-sitter."""
+    # This is the existing implementation, just renamed
     for go_file in scan_project(root, "go", workspace_config):
         go_path = Path(go_file)
         rel_path = str(go_path.relative_to(root))
 
-        # Get imports for this file
         imports = parse_go_imports(go_path)
-
-        # Build import resolution map
-        # For Go, imports are package paths with optional aliases
-        package_imports = {}  # local_name -> package_path
+        package_imports = {}
 
         for imp in imports:
             module = imp['module']
             alias = imp.get('alias')
 
-            # Resolve relative imports (./pkg)
             if module.startswith('./') or module.startswith('../'):
                 module_path = _resolve_go_import(rel_path, module)
             else:
                 module_path = module
 
-            # Determine the local name (alias or last path component)
             if alias:
                 local_name = alias
             else:
-                # Use last component of path as package name
                 local_name = module.rstrip('/').split('/')[-1]
 
             package_imports[local_name] = module_path
 
-        # Get calls from this file
         calls_by_func = _extract_go_file_calls(go_path, root)
 
         for caller_func, calls in calls_by_func.items():
@@ -3548,14 +3636,10 @@ def _build_go_call_graph(
                         pkg, func_name = parts
                         if pkg in package_imports:
                             pkg_path = package_imports[pkg]
-                            # Try to find in function index
-                            # For Go packages, look in all files in the package directory
                             for key, file_path in func_index.items():
-                                # Handle both tuple keys (mod, name) and string keys
                                 if isinstance(key, tuple) and len(key) == 2:
                                     mod, name = key
                                     if name == func_name:
-                                        # Check if this file is in the right package
                                         if pkg_path.lstrip('./') in file_path or mod == pkg:
                                             graph.add_edge(rel_path, caller_func, file_path, func_name)
                                             break
