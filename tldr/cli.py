@@ -232,8 +232,8 @@ Semantic Search:
     ctx_p.add_argument("--depth", type=int, default=2, help="Call depth (default: 2)")
     ctx_p.add_argument(
         "--lang",
-        default="python",
-        choices=["python", "typescript", "javascript", "go", "rust", "java", "c",
+        default="auto",
+        choices=["auto","python", "typescript", "javascript", "go", "rust", "java", "c",
                  "cpp", "ruby", "php", "kotlin", "swift", "csharp", "scala", "lua", "luau", "elixir"],
         help="Language",
     )
@@ -700,8 +700,10 @@ Semantic Search:
             print(json.dumps(result, indent=2))
 
         elif args.command == "context":
+            project_root = args.project
+            lang = resolve_language(args.lang, project_root)
             ctx = get_relevant_context(
-                args.project, args.entry, depth=args.depth, language=args.lang
+                args.project, args.entry, depth=args.depth, language=lang
             )
             # Output LLM-ready string directly
             print(ctx.to_llm_string())
