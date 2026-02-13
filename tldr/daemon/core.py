@@ -469,7 +469,7 @@ class TLDRDaemon:
         if "call_graph" in self.indexes:
             return
 
-        call_graph_path = self.tldr_dir / "call_graph.json"
+        call_graph_path = self.tldr_dir / "cache" / "call_graph.json"
         if call_graph_path.exists():
             try:
                 self.indexes["call_graph"] = json.loads(call_graph_path.read_text())
